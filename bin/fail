@@ -1,0 +1,46 @@
+#!/usr/bin/env ruby
+
+require 'fail'
+
+BUFFER_SIZE = 512
+DEFAULT_THROTTLE = 0.001
+
+cmd = ''
+
+state = Fail::State.new
+
+IO.popen(['tail', '-f', ARGV[0]]) do |io|
+  while true do
+    sleep state.throttle
+    IO.select([io, STDIN])
+
+    begin
+      if state.column
+        output_string = io.read_nonblock(BUFFER_SIZE).strip
+        print output_string[0..(state.column)]
+        print "..." if output_string.length > state.column
+        puts ""
+      else
+        print io.read_nonblock(BUFFER_SIZE)
+      end
+    rescue IO::EAGAINWaitReadable
+    end
+
+    begin
+      cmd = STDIN.read_nonblock(BUFFER_SIZE)
+    rescue IO::EAGAINWaitReadable
+    end
+
+    case cmd
+    when /^r(eset)?/ # reset
+      state.reset!
+    when /^c(ut)?/
+      state.column_from cmd
+      puts "\ncolumn set to #{state.column} characers"
+    when /^t(hrottle)?/
+      state.throttle_from cmd
+      puts "\nThrottle set to #{state.throttle} seconds"
+    end
+    cmd = ''
+  end
+end
